@@ -1,0 +1,53 @@
+_dataset/cif
+_dataset/_blacklist.json
+_dataset/_crystals_ids.json
+_dataset/_data.json
+_dataset/_embeddings.json
+_dataset/_metadata.json
+_dataset/latent_clusters.csv
+autoencoder/runs
+autoencoder/scripts
+autoencoder/test_model.py
+latent_neat/runs
+latent_neat/scripts
+
+# Caché de Python y archivos compilados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales (venv, env, conda, etc.)
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Dependencias de compilación y empaquetado
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Bases de datos locales
+*.sqlite3
+*.db
+
+# Archivos de Jupyter Notebook
+.ipynb_checkpoints
+
+# Logs de Python y reportes
+*.log
+local_settings.py
