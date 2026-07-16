@@ -78,17 +78,17 @@ def matrix_to_graph(Z_array, frac_positions, lattice_params,
                     cutoff=4.0):
     """Convierte arrays individuales en un jraph.GraphsTuple inyectando las constantes."""
     
-    # 1. FORZAR A NUMPY CPU Y DES-NORMALIZAR USANDO LOS PARÁMETROS INYECTADOS
-    Z_array = np.asarray(Z_array, dtype=np.float64) * max_atomic_number
+    Z_val = np.asarray(Z_array, dtype=np.float64)
+    
     frac_positions = np.asarray(frac_positions, dtype=np.float64)
     
     lattice_params = np.asarray(lattice_params, dtype=np.float64)
     lattice_params[0:3] *= max_lattice_length
     lattice_params[3:6] *= max_lattice_angle
     
-    # 2. Extraer átomos reales (ignoramos el padding Z=0)
-    real_mask = Z_array > 0.1 
-    Z_numbers = Z_array[real_mask].astype(np.int32)
+    # 2. Extraer átomos reales (padding Z=0)
+    real_mask = Z_val > 0
+    Z_numbers = Z_val[real_mask]
     real_frac_pos = frac_positions[real_mask]
     
     num_nodes = len(Z_numbers)

@@ -13,7 +13,7 @@ LATTICE_PARAMS = 6       # a, b, c, alpha, beta, gamma
 # CONSTANTES DE NORMALIZACIÓN
 # ==========================================
 MAX_ATOMIC_NUMBER = 118
-MAX_LATTICE_LENGTH = 38.0  # Ajusta esto si en tu anterior código usabas otro valor
+MAX_LATTICE_LENGTH = 38.0
 MAX_LATTICE_ANGLE = 180.0
 
 # ==========================================
@@ -23,4 +23,6 @@ DATA_PATH = os.getenv("DATA_PATH")
 BATCH_SIZE = 256
 MAX_N_EDGES = 131072
 SEED = 42
-EPOCHS = 5
+EPOCHS = 500
+LATENT_DIM = 64
+

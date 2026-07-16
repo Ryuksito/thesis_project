@@ -29,7 +29,7 @@ def radial_basis(x, num_basis=32, cutoff=5.0):
     return jnp.exp(-gamma * (x - centers)**2)
 
 # ==============================================================================
-# 1. EL ENCODER EQUIVARIANTE (e3nn-jax)
+# 1. EL ENCODER EQUIVARIANTE (e3nn-jax) CON GRAPH MASKING
 # ==============================================================================
 class CrystalEncoder(nn.Module):
     latent_dim: int = 64
@@ -53,12 +53,22 @@ class CrystalEncoder(nn.Module):
         
         # B) Armónicos Esféricos y Distancia Radial
         distances = jnp.linalg.norm(diff_cart, axis=-1, keepdims=True)
-        edge_rbf = radial_basis(distances) 
-        sh = e3nn.spherical_harmonics("0e + 1o + 2e", diff_cart, normalize=True)
         
-        # C) Embedding Químico (Nodo) - CORREGIDO
-        vocab_size = int(self.max_atomic_number) + 1 # 119 clases (0 al 118)
-        # Forzamos int32 porque Embedding exige enteros categóricos, no floats
+        # --- 🛡️ INICIO DEL BLINDAJE (MASKING) 🛡️ ---
+        # 1. Crear máscara: 1.0 para aristas reales, 0.0 para aristas de padding
+        edge_mask = (distances > 1e-6).astype(jnp.float32)
+        
+        # 2. Vector seguro: Reemplaza los vectores [0,0,0] por [1,0,0] SOLO en el padding
+        # Esto evita que e3nn divida por cero al normalizar
+        safe_diff_cart = jnp.where(distances > 1e-6, diff_cart, jnp.array([1.0, 0.0, 0.0]))
+        
+        # 3. Aplicar máscara a la distancia y usar vector seguro para SH
+        edge_rbf = radial_basis(distances) * edge_mask 
+        sh = e3nn.spherical_harmonics("0e + 1o + 2e", safe_diff_cart, normalize=True)
+        # --- FIN DEL BLINDAJE ---
+        
+        # C) Embedding Químico (Nodo)
+        vocab_size = int(self.max_atomic_number) + 1 
         z_indices = graph.nodes["Z"].astype(jnp.int32) 
         node_embed = nn.Embed(num_embeddings=vocab_size, features=64)(z_indices)
         node_features = e3nn.IrrepsArray("64x0e", node_embed)
@@ -70,7 +80,13 @@ class CrystalEncoder(nn.Module):
         
         messages = e3nn.tensor_product(weighted_senders, sh)
         
-        node_updates = jax.ops.segment_sum(messages.array, graph.receivers, num_segments=graph.nodes["Z"].shape[0])
+        # --- 🛡️ BLINDAJE FINAL 🛡️ ---
+        # 4. Multiplicamos los mensajes por la máscara antes de sumar.
+        # Así aseguramos que el grafo fantasma envíe "0" a los nodos reales.
+        messages_array = messages.array * edge_mask
+        
+        # Sumamos la información de forma segura
+        node_updates = jax.ops.segment_sum(messages_array, graph.receivers, num_segments=graph.nodes["Z"].shape[0])
         node_features = e3nn.IrrepsArray(messages.irreps, node_updates)
         
         # E) Pooling
@@ -114,8 +130,8 @@ class CrystalDecoder(nn.Module):
 # 3. AUTOENCODER ORQUESTADOR
 # ==============================================================================
 class Autoencoder(nn.Module):
-    latent_dim: int = 64
-    max_atoms: int = 24
+    latent_dim: int = config.LATENT_DIM
+    max_atoms: int = config.MAX_ATOMS
     max_atomic_number: int = config.MAX_ATOMIC_NUMBER
     
     def setup(self):
@@ -139,3 +155,40 @@ class Autoencoder(nn.Module):
 
     def decode(self, latent_vector):
         return self.decoder(latent_vector)
+    
+    @classmethod
+    def load_decoder_for_neat(cls, checkpoint_dir, max_atoms=24, max_atomic_number=118):
+        """
+        Carga un checkpoint del Autoencoder desde el disco, hace la cirugía de VRAM
+        y devuelve ÚNICAMENTE el modelo Decoder y sus parámetros listos para inferencia.
+        """
+        import orbax.checkpoint as ocp
+        import os
+        
+        print(f"\n🔍 Buscando checkpoints en: {checkpoint_dir}")
+        checkpoint_manager = ocp.CheckpointManager(
+            os.path.abspath(checkpoint_dir), 
+            ocp.PyTreeCheckpointer()
+        )
+        
+        best_step = checkpoint_manager.best_step()
+        if best_step is None:
+            raise FileNotFoundError(f"❌ No se encontró ningún checkpoint válido en {checkpoint_dir}")
+            
+        print(f"📥 Cargando pesos globales (Época: {best_step})...")
+        restored = checkpoint_manager.restore(best_step, args=ocp.args.PyTreeRestore())
+        full_params = restored['params'] if 'params' in restored else restored
+        
+        # ✂️ CIRUGÍA DE MEMORIA: Extraemos solo la llave del Decoder
+        decoder_only_params = full_params['decoder']
+        
+        # Instanciamos la arquitectura pura del Decoder
+        decoder_model = CrystalDecoder(
+            max_atoms=max_atoms, 
+            max_atomic_number=max_atomic_number
+        )
+        
+        print("✅ ¡Decoder aislado con éxito! Encoder destruido antes de tocar la GPU.")
+        
+        # Retornamos el modelo y los pesos empaquetados como flax lo necesita
+        return decoder_model, {'params': decoder_only_params}

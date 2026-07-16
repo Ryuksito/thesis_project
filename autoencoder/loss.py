@@ -100,9 +100,9 @@ def compute_total_loss(pred_lattice, pred_pos, pred_z_logits, target_lattice, ta
     
     # 2. Pesos del balance multimodal
     # Ajusta estos multiplicadores si notas que una métrica domina a las demás
-    w_lat = 1.0 * l_lat
+    w_lat = 100.0 * l_lat
     w_z = 1.0 * l_z
-    w_pos = 10.0 * l_pos 
+    w_pos = 40.0 * l_pos 
     
     total_loss = w_lat + w_z + w_pos
     

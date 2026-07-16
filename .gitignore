@@ -1,15 +1,10 @@
-_dataset/cif
-_dataset/_blacklist.json
-_dataset/_crystals_ids.json
-_dataset/_data.json
-_dataset/_embeddings.json
-_dataset/_metadata.json
-_dataset/latent_clusters.csv
+*.png
+_dataset/
 autoencoder/runs
 autoencoder/scripts
-autoencoder/test_model.py
 latent_neat/runs
 latent_neat/scripts
+borrar.py
 
 # Caché de Python y archivos compilados
 __pycache__/
