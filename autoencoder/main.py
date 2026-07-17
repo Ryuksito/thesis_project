@@ -5,7 +5,7 @@ import os
 import sys
 import time
 import subprocess
-import csv  # <--- IMPORTANTE: Agregado para manejar el CSV
+import csv
 
 if os.getcwd().endswith("autoencoder"):
     os.chdir("../")
@@ -29,7 +29,6 @@ from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
 
 # LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v2/"
-
 BASE_DIR = os.getcwd()
 LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v2")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
@@ -115,23 +114,59 @@ def main():
     optimizer = optax.adamw(learning_rate=1e-5)
     state = train_state.TrainState.create(apply_fn=model.apply, params=variables['params'], tx=optimizer)
     
-    # 4. Restaurar Checkpoint si existe
+    # # 4. Restaurar Checkpoint si existe
+    # best_step = checkpoint_manager.best_step()
+    # start_epoch = 0
+    # if best_step is not None:
+    #     print(f"\n🔄 ¡Checkpoint encontrado! Analizando formato de la época {best_step}...")
+        
+    #     # Leemos el archivo en bruto primero para ver qué tiene adentro
+    #     raw_restored = checkpoint_manager.restore(best_step)
+        
+    #     if 'opt_state' in raw_restored:
+    #         # FORMATO NUEVO: Tiene la memoria del optimizador
+    #         print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
+    #         state = checkpoint_manager.restore(best_step, args=ocp.args.PyTreeRestore(item=state))
+    #     else:
+    #         # FORMATO VIEJO: Solo tiene los pesos (Época 37 o anteriores)
+    #         print("⚠️ Formato ANTIGUO detectado (solo pesos).")
+    #         print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
+    #         params_only = raw_restored['params'] if 'params' in raw_restored else raw_restored
+    #         state = state.replace(params=params_only)
+            
+    #     start_epoch = best_step
+    #     print("📊 El historial CSV continuará escribiéndose sin borrar lo anterior.")
+    # else:
+    #     # Si empezamos de cero, creamos el archivo CSV y escribimos los encabezados
+    #     with open(csv_log_path, 'w', newline='') as f:
+    #         writer = csv.writer(f)
+    #         writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec"])
+    # =====================================================================
+    # 4. RESTAURAR CHECKPOINT (Compatible con NVIDIA <-> MAC M4)
+    # =====================================================================
     best_step = checkpoint_manager.best_step()
     start_epoch = 0
+    
     if best_step is not None:
         print(f"\n🔄 ¡Checkpoint encontrado! Analizando formato de la época {best_step}...")
         
-        # Leemos el archivo en bruto primero para ver qué tiene adentro
-        raw_restored = checkpoint_manager.restore(best_step)
-        
-        if 'opt_state' in raw_restored:
-            # FORMATO NUEVO: Tiene la memoria del optimizador
+        try:
+            # Intento 1: Formato NUEVO (Tiene state completo: pesos + optimizador)
+            # Al pasar 'item=state', Orbax adapta automáticamente los pesos al hardware actual
+            restore_args = ocp.args.PyTreeRestore(item=state)
+            state = checkpoint_manager.restore(best_step, args=restore_args)
             print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
-            state = checkpoint_manager.restore(best_step, args=ocp.args.PyTreeRestore(item=state))
-        else:
-            # FORMATO VIEJO: Solo tiene los pesos (Época 37 o anteriores)
-            print("⚠️ Formato ANTIGUO detectado (solo pesos).")
+            
+        except Exception as e:
+            # Intento 2: Formato VIEJO (Solo tenía pesos)
+            print("⚠️ Formato ANTIGUO detectado (solo pesos). Adaptando a la nueva estructura...")
             print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
+            
+            # Pasamos solo la estructura de los params como molde
+            restore_args_old = ocp.args.PyTreeRestore(item={'params': state.params})
+            raw_restored = checkpoint_manager.restore(best_step, args=restore_args_old)
+            
+            # Extraemos los pesos puros
             params_only = raw_restored['params'] if 'params' in raw_restored else raw_restored
             state = state.replace(params=params_only)
             
