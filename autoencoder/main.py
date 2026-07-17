@@ -141,39 +141,46 @@ def main():
     #     with open(csv_log_path, 'w', newline='') as f:
     #         writer = csv.writer(f)
     #         writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec"])
+    
     # =====================================================================
     # 4. RESTAURAR CHECKPOINT (Compatible con NVIDIA <-> MAC M4)
     # =====================================================================
     best_step = checkpoint_manager.best_step()
     start_epoch = 0
-    
+
     if best_step is not None:
         print(f"\n🔄 ¡Checkpoint encontrado! Analizando formato de la época {best_step}...")
-        
+
+        # Sharding local: todo va al único device Metal/MPS disponible en este Mac
+        local_sharding = jax.sharding.SingleDeviceSharding(jax.devices()[0])
+
+        def to_abstract(x):
+            # Convierte cada hoja de 'state' en un molde (shape+dtype+sharding local)
+            # sin importar en qué device/topología se guardó el checkpoint original
+            return jax.ShapeDtypeStruct(x.shape, x.dtype, sharding=local_sharding)
+
         try:
-            # Intento 1: Formato NUEVO (Tiene state completo: pesos + optimizador)
-            # Al pasar 'item=state', Orbax adapta automáticamente los pesos al hardware actual
-            restore_args = ocp.args.PyTreeRestore(item=state)
+            # Intento 1: Formato NUEVO (state completo: pesos + optimizador)
+            abstract_state = jax.tree_util.tree_map(to_abstract, state)
+            restore_args = ocp.args.PyTreeRestore(item=abstract_state)
             state = checkpoint_manager.restore(best_step, args=restore_args)
             print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
-            
+
         except Exception as e:
-            # Intento 2: Formato VIEJO (Solo tenía pesos)
-            print("⚠️ Formato ANTIGUO detectado (solo pesos). Adaptando a la nueva estructura...")
+            # Intento 2: Formato VIEJO real (checkpoint que solo tenía 'params')
+            print(f"⚠️ Fallback a formato antiguo. Motivo: {e}")
             print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
-            
-            # Pasamos solo la estructura de los params como molde
-            restore_args_old = ocp.args.PyTreeRestore(item={'params': state.params})
+
+            abstract_params = jax.tree_util.tree_map(to_abstract, {'params': state.params})
+            restore_args_old = ocp.args.PyTreeRestore(item=abstract_params)
             raw_restored = checkpoint_manager.restore(best_step, args=restore_args_old)
-            
-            # Extraemos los pesos puros
+
             params_only = raw_restored['params'] if 'params' in raw_restored else raw_restored
             state = state.replace(params=params_only)
-            
+
         start_epoch = best_step
         print("📊 El historial CSV continuará escribiéndose sin borrar lo anterior.")
     else:
-        # Si empezamos de cero, creamos el archivo CSV y escribimos los encabezados
         with open(csv_log_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec"])
