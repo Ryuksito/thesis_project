@@ -125,13 +125,15 @@ def main():
 
         local_sharding = jax.sharding.SingleDeviceSharding(jax.devices()[0])
 
-        def to_abstract(x):
-            arr = x if hasattr(x, "shape") and hasattr(x, "dtype") else jnp.asarray(x)
-            return jax.ShapeDtypeStruct(arr.shape, arr.dtype, sharding=local_sharding)
+        # En la API legacy, la sharding se pasa vía restore_args (ArrayRestoreArgs),
+        # NO poniendo ShapeDtypeStruct en 'item'. 'item' puede ser el state concreto.
+        def make_restore_args(x):
+            return ocp.ArrayRestoreArgs(sharding=local_sharding)
 
         try:
-            abstract_state = jax.tree_util.tree_map(to_abstract, state)
-            restore_args = ocp.args.PyTreeRestore(item=abstract_state)
+            # Intento 1: Formato NUEVO (state completo: pesos + optimizador)
+            restore_args_tree = jax.tree_util.tree_map(make_restore_args, state)
+            restore_args = ocp.args.PyTreeRestore(item=state, restore_args=restore_args_tree)
             state = checkpoint_manager.restore(best_step, args=restore_args)
             print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
 
@@ -139,8 +141,9 @@ def main():
             print(f"⚠️ Fallback a formato antiguo. Motivo: {e}")
             print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
 
-            abstract_params = jax.tree_util.tree_map(to_abstract, {'params': state.params})
-            restore_args_old = ocp.args.PyTreeRestore(item=abstract_params)
+            params_item = {'params': state.params}
+            restore_args_old_tree = jax.tree_util.tree_map(make_restore_args, params_item)
+            restore_args_old = ocp.args.PyTreeRestore(item=params_item, restore_args=restore_args_old_tree)
             raw_restored = checkpoint_manager.restore(best_step, args=restore_args_old)
 
             params_only = raw_restored['params'] if 'params' in raw_restored else raw_restored
