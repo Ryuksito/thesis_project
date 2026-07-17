@@ -114,34 +114,6 @@ def main():
     optimizer = optax.adamw(learning_rate=1e-5)
     state = train_state.TrainState.create(apply_fn=model.apply, params=variables['params'], tx=optimizer)
     
-    # # 4. Restaurar Checkpoint si existe
-    # best_step = checkpoint_manager.best_step()
-    # start_epoch = 0
-    # if best_step is not None:
-    #     print(f"\n🔄 ¡Checkpoint encontrado! Analizando formato de la época {best_step}...")
-        
-    #     # Leemos el archivo en bruto primero para ver qué tiene adentro
-    #     raw_restored = checkpoint_manager.restore(best_step)
-        
-    #     if 'opt_state' in raw_restored:
-    #         # FORMATO NUEVO: Tiene la memoria del optimizador
-    #         print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
-    #         state = checkpoint_manager.restore(best_step, args=ocp.args.PyTreeRestore(item=state))
-    #     else:
-    #         # FORMATO VIEJO: Solo tiene los pesos (Época 37 o anteriores)
-    #         print("⚠️ Formato ANTIGUO detectado (solo pesos).")
-    #         print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
-    #         params_only = raw_restored['params'] if 'params' in raw_restored else raw_restored
-    #         state = state.replace(params=params_only)
-            
-    #     start_epoch = best_step
-    #     print("📊 El historial CSV continuará escribiéndose sin borrar lo anterior.")
-    # else:
-    #     # Si empezamos de cero, creamos el archivo CSV y escribimos los encabezados
-    #     with open(csv_log_path, 'w', newline='') as f:
-    #         writer = csv.writer(f)
-    #         writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec"])
-    
     # =====================================================================
     # 4. RESTAURAR CHECKPOINT (Compatible con NVIDIA <-> MAC M4)
     # =====================================================================
@@ -155,9 +127,10 @@ def main():
         local_sharding = jax.sharding.SingleDeviceSharding(jax.devices()[0])
 
         def to_abstract(x):
-            # Convierte cada hoja de 'state' en un molde (shape+dtype+sharding local)
-            # sin importar en qué device/topología se guardó el checkpoint original
-            return jax.ShapeDtypeStruct(x.shape, x.dtype, sharding=local_sharding)
+            # state.step arranca como int Python puro (no jax.Array) hasta el
+            # primer apply_gradients, así que lo normalizamos antes de pedir .shape
+            arr = x if hasattr(x, "shape") and hasattr(x, "dtype") else jnp.asarray(x)
+            return jax.ShapeDtypeStruct(arr.shape, arr.dtype, sharding=local_sharding)
 
         try:
             # Intento 1: Formato NUEVO (state completo: pesos + optimizador)
