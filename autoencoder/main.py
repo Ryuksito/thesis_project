@@ -108,7 +108,7 @@ def main():
     )
     variables = model.init(key, dummy_graph)
     
-    optimizer = optax.adamw(learning_rate=1e-4)
+    optimizer = optax.adamw(learning_rate=1e-5)
     state = train_state.TrainState.create(apply_fn=model.apply, params=variables['params'], tx=optimizer)
     
     # 4. Restaurar Checkpoint si existe

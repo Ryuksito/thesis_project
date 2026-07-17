@@ -5,6 +5,7 @@ autoencoder/scripts
 latent_neat/runs
 latent_neat/scripts
 borrar.py
+.vscode
 
 # Caché de Python y archivos compilados
 __pycache__/
