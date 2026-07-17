@@ -35,9 +35,13 @@ from latent_neat.data.loader import load_dataset, BatchLoader
 from autoencoder.models.autoencoder import Autoencoder
 
 # --- RUTAS ---
-LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/latent_neat/runs/v1/"
+# LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/latent_neat/runs/v1/"
+BASE_DIR = os.getcwd()
+LOGS_DIR = os.path.join(BASE_DIR, "latent_neat", "runs", "v1")
+print(f"Los logs se guardarán en: {LOGS_DIR}")
 CHKPT_DIR = os.path.join(LOGS_DIR, "checkpoints")
-AUTOENCODER_LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
+# AUTOENCODER_LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
+AUTOENCODER_LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v1")
 AUTOENCODER_CHECKPOINT_DIR = os.path.join(AUTOENCODER_LOGS_DIR, "checkpoints")
 
 os.makedirs(LOGS_DIR, exist_ok=True)

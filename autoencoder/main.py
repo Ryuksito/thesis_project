@@ -28,7 +28,11 @@ from autoencoder.data.loader import load_dataset, get_batches, create_batched_da
 from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
 
-LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v2/"
+# LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v2/"
+
+BASE_DIR = os.getcwd()
+LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v2")
+print(f"Los logs se guardarán en: {LOGS_DIR}")
 
 # =====================================================================
 # FUNCIÓN AUXILIAR PARA OBTENER VRAM

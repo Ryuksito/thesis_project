@@ -1,0 +1,9 @@
+name: thesis
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - jax
+  - ipykernel
+  - matscipy
+prefix: /home/alanh/miniconda3/envs/thesis

@@ -29,7 +29,10 @@ MAX_LATTICE_ANGLE = 180.0
 # ==========================================
 # CONSTANTES DE ENTRENAMIENTO JAX/NEAT
 # ==========================================
-DATA_PATH = os.getenv("DATA_PATH")
+
+# DATA_PATH = os.getenv("DATA_PATH")
+BASE_DIR = os.getcwd()
+DATA_PATH = os.path.join(BASE_DIR, "_dataset")
 SEED = 42
 
 # --- Hiperparámetros de Descenso de Gradiente ---

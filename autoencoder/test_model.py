@@ -21,7 +21,10 @@ from autoencoder.data.loader import load_dataset, get_batches, create_batched_da
 from autoencoder.loss import mse_loss
 
 
-LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
+# LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
+BASE_DIR = os.getcwd()
+LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v1")
+print(f"Los logs se guardarán en: {LOGS_DIR}")
 CHECKPOINT_DIR = os.path.join(LOGS_DIR, "checkpoints")
 
 # =====================================================================

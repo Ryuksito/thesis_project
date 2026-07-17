@@ -19,7 +19,10 @@ MAX_LATTICE_ANGLE = 180.0
 # ==========================================
 # STRUC CONSTANTS
 # ==========================================
-DATA_PATH = os.getenv("DATA_PATH")
+# DATA_PATH = os.getenv("DATA_PATH")
+BASE_DIR = os.getcwd()
+DATA_PATH = os.path.join(BASE_DIR, "_dataset")
+
 BATCH_SIZE = 256
 MAX_N_EDGES = 131072
 SEED = 42
