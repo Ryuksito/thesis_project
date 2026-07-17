@@ -123,24 +123,19 @@ def main():
     if best_step is not None:
         print(f"\n🔄 ¡Checkpoint encontrado! Analizando formato de la época {best_step}...")
 
-        # Sharding local: todo va al único device Metal/MPS disponible en este Mac
         local_sharding = jax.sharding.SingleDeviceSharding(jax.devices()[0])
 
         def to_abstract(x):
-            # state.step arranca como int Python puro (no jax.Array) hasta el
-            # primer apply_gradients, así que lo normalizamos antes de pedir .shape
             arr = x if hasattr(x, "shape") and hasattr(x, "dtype") else jnp.asarray(x)
             return jax.ShapeDtypeStruct(arr.shape, arr.dtype, sharding=local_sharding)
 
         try:
-            # Intento 1: Formato NUEVO (state completo: pesos + optimizador)
             abstract_state = jax.tree_util.tree_map(to_abstract, state)
             restore_args = ocp.args.PyTreeRestore(item=abstract_state)
             state = checkpoint_manager.restore(best_step, args=restore_args)
             print("📦 Formato NUEVO detectado. Restaurando pesos + inercia de AdamW...")
 
         except Exception as e:
-            # Intento 2: Formato VIEJO real (checkpoint que solo tenía 'params')
             print(f"⚠️ Fallback a formato antiguo. Motivo: {e}")
             print("   -> Ocurrirá un ligero 'Optimizer Shock' en la primera época, es normal.")
 
