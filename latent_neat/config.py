@@ -47,8 +47,8 @@ LR_MIN = 1e-5               # Tasa mínima (aterrizaje suave en el mínimo globa
 
 # --- Hiperparámetros Topológicos (TensorNEAT) ---
 # 🟢 Subido de 112 a 1000. Tendrás 1000 topologías neuronales distintas compitiendo.
-POPSIZE = 96       
-POP_BATCH_SIZE = 32       
+POPSIZE = 8     
+POP_BATCH_SIZE = 8       
 SPECIES_SIZE = 20
 SURVIVAL_THRESHOLD = 0.1
 

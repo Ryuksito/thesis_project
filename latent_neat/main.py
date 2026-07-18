@@ -1,6 +1,7 @@
 # ==========================================
 # CONFIGURACIÓN DE RUTAS (Root Execution)
 # ==========================================
+import gc
 import os
 import sys
 import time
@@ -9,8 +10,9 @@ import csv
 import subprocess
 
 # Optimizaciones extremas de memoria para JAX/XLA
-os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+# os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+# os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+# os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
 
 if os.getcwd().endswith("latent_neat"):
     os.chdir("../")
@@ -19,6 +21,7 @@ sys.path.append(os.getcwd())
 print(f"Current working directory: {os.getcwd()}")
 print(f"Python import paths: {sys.path[-1]}")
 
+import optax
 import orbax.checkpoint as ocp
 import numpy as np
 import jax
@@ -33,15 +36,16 @@ from autoencoder import config as autoencoder_config
 from latent_neat import config
 from latent_neat.data.loader import load_dataset, BatchLoader
 from autoencoder.models.autoencoder import Autoencoder
+from autoencoder.models.autoencoder import load_decoder
 
 # --- RUTAS ---
 # LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/latent_neat/runs/v1/"
 BASE_DIR = os.getcwd()
-LOGS_DIR = os.path.join(BASE_DIR, "latent_neat", "runs", "v1")
+LOGS_DIR = os.path.join(BASE_DIR, "latent_neat", "runs", "v2")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
 CHKPT_DIR = os.path.join(LOGS_DIR, "checkpoints")
 # AUTOENCODER_LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
-AUTOENCODER_LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v1")
+AUTOENCODER_LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v2")
 AUTOENCODER_CHECKPOINT_DIR = os.path.join(AUTOENCODER_LOGS_DIR, "checkpoints")
 
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -70,16 +74,8 @@ def get_lr(step):
 dset_train, dset_test = load_dataset(os.path.join(config.DATA_PATH, "latent-neat-dataset.h5"))
 train_loader = BatchLoader(dset_train, config.BATCH_SIZE, shuffle=True)
 
-model = Autoencoder(latent_dim=64, max_atoms=autoencoder_config.MAX_ATOMS)
-checkpoint_manager = ocp.CheckpointManager(os.path.abspath(AUTOENCODER_CHECKPOINT_DIR), ocp.PyTreeCheckpointer())
-best_step = checkpoint_manager.best_step()
-
-if best_step is None:
-    print("❌ No se encontró ningún checkpoint en", AUTOENCODER_CHECKPOINT_DIR)
-    exit()
-
-print(f"📥 Cargando Juez Autoencoder (Época: {best_step})...")
-ae_params = checkpoint_manager.restore(best_step, args=ocp.args.PyTreeRestore())['params']
+print(f"📥 Cargando Juez Autoencoder categórico (V2)...")
+decoder_model, decoder_params = load_decoder(AUTOENCODER_LOGS_DIR)
 
 # ── 2. SETUP DE TENSORNEAT ─────────────────────────────────────────────────
 
@@ -109,12 +105,42 @@ state = neat.setup(state)
 g = neat.genome
 
 # ── 3. LÓGICA DE JAX COMPILADA ─────────────────────────────────────────────
+@jax.jit
+def compute_z_loss(pred_z_logits, target_z):
+    """
+    Evalúa la identidad del átomo usando Cross-Entropy (119 clases).
+    pred_z_logits: (Batch, Max_Atoms, 119)
+    target_z: (Batch, Max_Atoms) con números enteros (0 a 118)
+    """
+    # Convertimos a entero para Optax
+    target_z_int = target_z.astype(jnp.int32)
+    
+    # Máscaras
+    mask_real = (target_z > 0).astype(jnp.float32)
+    mask_pad = 1.0 - mask_real
+    
+    num_real_atoms = jnp.maximum(jnp.sum(mask_real), 1.0)
+    num_pad_atoms = jnp.maximum(jnp.sum(mask_pad), 1.0)
+    
+    # Cross-Entropy Matemática Pura
+    ce_loss = optax.softmax_cross_entropy_with_integer_labels(
+        logits=pred_z_logits, 
+        labels=target_z_int
+    )
+    
+    # Aplicamos máscaras
+    loss_z_real = jnp.sum(ce_loss * mask_real) / num_real_atoms
+    loss_z_pad = jnp.sum(ce_loss * mask_pad) / num_pad_atoms
+    
+    # Priorizamos aprender átomos reales, pero penalizamos levemente predecir padding mal
+    return loss_z_real + (0.5 * loss_z_pad)
 
-def compute_loss(neat_preds, target_lattice, target_pos, target_z, ae_params):
-    pred_lattice, pred_pos, pred_z = model.apply({'params': ae_params}, neat_preds, method=model.decode)
+@jax.jit
+def compute_loss(neat_preds, target_lattice, target_pos, target_z, decoder_params):
+    pred_lattice, pred_pos, pred_z = decoder_model.apply(decoder_params, neat_preds)
 
     l_lat = jnp.mean(jnp.square(pred_lattice - target_lattice))
-    l_z = jnp.mean(jnp.square(pred_z - target_z))
+    l_z = compute_z_loss(pred_z, target_z)
 
     mask = (target_z > 0.0).astype(jnp.float32)
     mask_expanded = jnp.expand_dims(mask, -1)
@@ -124,9 +150,9 @@ def compute_loss(neat_preds, target_lattice, target_pos, target_z, ae_params):
     total = (1.0 * l_lat) + (1.0 * l_z) + (10.0 * l_pos)
     return total, l_lat, l_z, l_pos
 
-def grad_step(nodes, conns, state, batch_inputs, target_lattice, target_pos, target_z, ae_params, lr):
+def grad_step(nodes, conns, state, batch_inputs, target_lattice, target_pos, target_z, lr, decoder_params):
     def loss_fn(preds):
-        tot, _, _, _ = compute_loss(preds, target_lattice, target_pos, target_z, ae_params)
+        tot, _, _, _ = compute_loss(preds, target_lattice, target_pos, target_z, decoder_params)
         return tot
 
     loss, (grads_n, grads_c) = g.grad(state, nodes, conns, batch_inputs, loss_fn)
@@ -137,13 +163,13 @@ def grad_step(nodes, conns, state, batch_inputs, target_lattice, target_pos, tar
 
     return nodes - lr * grads_n, conns - lr * grads_c, loss
 
-def evaluate_step(nodes, conns, state, batch_inputs, target_lattice, target_pos, target_z, ae_params):
+def evaluate_step(nodes, conns, state, batch_inputs, target_lattice, target_pos, target_z, decoder_params):
     # Transforma genoma a red usable
     transformed_network = g.transform(state, nodes, conns)
     # Forward pass sobre todo el batch (vmap)
     preds = jax.vmap(g.forward, in_axes=(None, None, 0))(state, transformed_network, batch_inputs)
     # Evaluamos físicamente en el decoder
-    return compute_loss(preds, target_lattice, target_pos, target_z, ae_params)
+    return compute_loss(preds, target_lattice, target_pos, target_z, decoder_params)
 
 # Compilación Masiva Vectorizada
 batch_grad_step = jax.jit(jax.vmap(grad_step, in_axes=(0, 0, None, None, None, None, None, None, None)))
@@ -187,8 +213,9 @@ for generation in pbar:
         
         pop_nodes, pop_conns, batch_losses = batch_grad_step(
             pop_nodes, pop_conns, state, 
-            batch_inputs, target_lattice, target_pos, target_z, 
-            ae_params, current_lr
+            batch_inputs, target_lattice, 
+            target_pos, target_z, current_lr,
+            decoder_params
         )
         
         if step == 0:
@@ -199,7 +226,7 @@ for generation in pbar:
     # 3. Evaluación Final para Selección Darwiniana
     # ¿Qué topología fue la mejor "aprendiendo"?
     cpu_totals, cpu_lats, cpu_zs, cpu_pos = jax.device_get(
-        batch_evaluate(pop_nodes, pop_conns, state, batch_inputs, target_lattice, target_pos, target_z, ae_params)
+        batch_evaluate(pop_nodes, pop_conns, state, batch_inputs, target_lattice, target_pos, target_z, decoder_params)
     )
 
     valid_mask = np.isfinite(cpu_totals)
@@ -207,6 +234,10 @@ for generation in pbar:
     
     # Fitness = negativo del loss (NEAT maximiza)
     fitnesses = -cpu_losses_safe
+
+    # --- 🧹 LIMPIEZA MANUAL ANTES DEL CROSSOVER ---
+    del batch, batch_inputs, target_lattice, target_pos, 
+    gc.collect()
     
     # 4. NEAT selecciona y genera los padres de la sig. generación
     state = neat.tell(state, fitnesses)

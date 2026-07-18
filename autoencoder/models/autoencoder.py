@@ -1,9 +1,110 @@
+import os
+
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 import jraph
 import e3nn_jax as e3nn
-import config
+import orbax.checkpoint as ocp
+import autoencoder.config as config
+
+# ==============================================================================
+# 4. FUNCIONES DE CARGA Y CIRUGÍA DE VRAM (CROSS-HARDWARE)
+# ==============================================================================
+
+def _create_minimal_dummy_graph(max_atoms=24):
+    """Crea un grafo matemáticamente válido pero vacío para engañar a JAX y obtener las dimensiones."""
+    return jraph.GraphsTuple(
+        nodes={
+            "pos": jnp.zeros((max_atoms, 3), dtype=jnp.float32),
+            "Z": jnp.zeros((max_atoms,), dtype=jnp.int32)
+        },
+        edges={"shifts": jnp.zeros((1, 3), dtype=jnp.float32)},
+        senders=jnp.array([0], dtype=jnp.int32),
+        receivers=jnp.array([0], dtype=jnp.int32),
+        n_node=jnp.array([max_atoms], dtype=jnp.int32),
+        n_edge=jnp.array([1], dtype=jnp.int32),
+        globals={"lattice": jnp.array([[1.0, 1.0, 1.0, 90.0, 90.0, 90.0]], dtype=jnp.float32)}
+    )
+
+def _get_params_from_checkpoint(run_dir: str, latent_dim: int, max_atoms: int, max_atomic_number: int):
+    """Extrae pesos ignorando la topología de hardware, fusionando el estado completo para evitar Mismatch."""
+    import optax
+    from flax.training import train_state
+
+    chkpt_dir = os.path.join(run_dir, "checkpoints")
+    if not os.path.exists(chkpt_dir):
+        chkpt_dir = run_dir 
+        
+    checkpoint_manager = ocp.CheckpointManager(os.path.abspath(chkpt_dir), ocp.PyTreeCheckpointer())
+    best_step = checkpoint_manager.best_step()
+    
+    if best_step is None:
+        raise FileNotFoundError(f"❌ No se encontró ningún checkpoint en {chkpt_dir}")
+        
+    print(f"📥 Restaurando pesos desde Época: {best_step}...")
+    
+    # 1. Instanciamos el modelo "fantasma" 
+    model = Autoencoder(latent_dim=latent_dim, max_atoms=max_atoms, max_atomic_number=max_atomic_number)
+    dummy_graph = _create_minimal_dummy_graph(max_atoms)
+    variables = model.init(jax.random.PRNGKey(0), dummy_graph)
+    
+    # 2. 🧠 CREAMOS EL TRAINSTATE: Esto apacigua a Orbax dándole la estructura idéntica al disco
+    optimizer = optax.adamw(learning_rate=1e-5)
+    state = train_state.TrainState.create(apply_fn=model.apply, params=variables['params'], tx=optimizer)
+    
+    # 3. Obligamos a JAX a rutear todos los tensores a la máquina actual (Cura el error de MPS)
+    local_device = jax.devices()[0]
+    local_sharding = jax.sharding.SingleDeviceSharding(local_device)
+    
+    def make_restore_args(x):
+        return ocp.ArrayRestoreArgs(sharding=local_sharding)
+
+    # 4. Le pasamos el árbol entero (state) al mapa de restauración
+    try:
+        # Intento 1: Formato COMPLETO (El que lanzaba el error)
+        restore_args_tree = jax.tree_util.tree_map(make_restore_args, state)
+        restore_args = ocp.args.PyTreeRestore(item=state, restore_args=restore_args_tree)
+        restored_state = checkpoint_manager.restore(best_step, args=restore_args)
+        
+        # Devolvemos SOLO los parámetros. El opt_state es eliminado de la VRAM automáticamente.
+        return restored_state.params
+        
+    except Exception as e:
+        # Intento 2: Fallback de seguridad (Checkpoints viejos)
+        print(f"⚠️ Fallback activado. Motivo: {e}")
+        params_item = {'params': variables['params']}
+        restore_args_old_tree = jax.tree_util.tree_map(make_restore_args, params_item)
+        restore_args_old = ocp.args.PyTreeRestore(item=params_item, restore_args=restore_args_old_tree)
+        raw_restored = checkpoint_manager.restore(best_step, args=restore_args_old)
+        
+        return raw_restored['params'] if 'params' in raw_restored else raw_restored
+    
+def load_autoencoder(run_dir: str, latent_dim=64, max_atoms=24, max_atomic_number=118):
+    params = _get_params_from_checkpoint(run_dir, latent_dim, max_atoms, max_atomic_number)
+    model = Autoencoder(latent_dim=latent_dim, max_atoms=max_atoms, max_atomic_number=max_atomic_number)
+    print("✅ Autoencoder completo cargado en memoria.")
+    return model, {'params': params}
+
+def load_decoder(run_dir: str, latent_dim=64, max_atoms=24, max_atomic_number=118):
+    full_params = _get_params_from_checkpoint(run_dir, latent_dim, max_atoms, max_atomic_number)
+    
+    # ✂️ Cirugía VRAM
+    decoder_params = full_params['decoder']
+    model = CrystalDecoder(max_atoms=max_atoms, max_atomic_number=max_atomic_number)
+    
+    print("✅ Cirugía exitosa: Decoder aislado y reasignado a GPU local.")
+    return model, {'params': decoder_params}
+
+def load_encoder(run_dir: str, latent_dim=64, max_atoms=24, max_atomic_number=118):
+    full_params = _get_params_from_checkpoint(run_dir, latent_dim, max_atoms, max_atomic_number)
+    
+    # ✂️ Cirugía VRAM
+    encoder_params = full_params['encoder']
+    model = CrystalEncoder(latent_dim=latent_dim, max_atomic_number=max_atomic_number)
+    
+    print("✅ Cirugía exitosa: Encoder aislado y reasignado a GPU local.")
+    return model, {'params': encoder_params}
 
 # ==============================================================================
 # FUNCIONES FÍSICAS
