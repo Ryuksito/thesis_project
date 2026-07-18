@@ -30,7 +30,7 @@ from autoencoder.loss import compute_total_loss
 
 # LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v2/"
 BASE_DIR = os.getcwd()
-LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v2")
+LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v3")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
 
 # =====================================================================
