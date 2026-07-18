@@ -193,12 +193,13 @@ class CrystalEncoder(nn.Module):
         # E) Pooling
         scalar_features = node_features.filter("0e").array
         global_features = jax.ops.segment_sum(scalar_features, node_graph_indices, num_segments=graph.n_node.shape[0])
-        latent = nn.tanh(nn.Dense(self.latent_dim)(global_features))
+        latent_raw = nn.Dense(self.latent_dim)(global_features)
+        latent = nn.LayerNorm()(latent_raw)
         
         return latent
 
 # ==============================================================================
-# 2. EL DECODER GENERATIVO (Flax MLP)
+# 2. EL DECODER GENERATIVO (Flax MLP con Positional Encoding)
 # ==============================================================================
 class CrystalDecoder(nn.Module):
     max_atoms: int = 24
@@ -206,26 +207,61 @@ class CrystalDecoder(nn.Module):
     
     @nn.compact
     def __call__(self, latent_vector):
-        x = nn.relu(nn.Dense(256)(latent_vector))
-        x = nn.relu(nn.Dense(512)(x))
-        x = nn.relu(nn.Dense(512)(x))
+        # latent_vector shape: (Batch, latent_dim)
+        batch_size = latent_vector.shape[0]
         
-        # SALIDA A: 6 Parámetros de Red positivos (Regresión MSE continua)
-        pred_lattice = nn.softplus(nn.Dense(6)(x))
+        # -----------------------------------------------------------
+        # SALIDA A: PARÁMETROS DE RED (LATTICE)
+        # La red cristalina es una propiedad global del material.
+        # Por lo tanto, se deriva directamente del vector latente global.
+        # -----------------------------------------------------------
+        x_global = nn.relu(nn.Dense(256)(latent_vector))
+        x_global = nn.relu(nn.Dense(512)(x_global))
+        pred_lattice = nn.softplus(nn.Dense(6)(x_global))
         
-        # SALIDA B: 72 Coordenadas fraccionales [0, 1] (Regresión MSE continua)
-        pred_pos_flat = nn.sigmoid(nn.Dense(self.max_atoms * 3)(x))
-        pred_pos = pred_pos_flat.reshape(-1, self.max_atoms, 3)
+        # -----------------------------------------------------------
+        # SALIDA B & C: ÁTOMOS Y POSICIONES (ANCLAJE TOPOLÓGICO)
+        # Resolvemos la discontinuidad espacial.
+        # -----------------------------------------------------------
         
-        # SALIDA C: Identidades Atómicas - CORREGIDO A CLASIFICACIÓN
-        vocab_size = int(self.max_atomic_number) + 1 # 119 casilleros posibles
+        # 1. Definir el Anclaje (Positional Encoding P_i)
+        # Creamos índices fijos del 0 al 23.
+        idx = jnp.arange(self.max_atoms)
         
-        # Ya NO usamos ReLU. Generamos Logits puros (probabilidades matemáticas)
-        pred_z_logits = nn.Dense(self.max_atoms * vocab_size)(x)
-        # La forma será: (Batch, 24 átomos, 119 probabilidades)
-        pred_z = pred_z_logits.reshape(-1, self.max_atoms, vocab_size)
+        # Aprendemos un "Identificador" de 32 dimensiones para cada ranura atómica.
+        # pos_emb shape: (24, 32)
+        pos_emb = nn.Embed(num_embeddings=self.max_atoms, features=32)(idx) 
         
-        return pred_lattice, pred_pos, pred_z
+        # 2. Transmisión del Campo Vectorial Global (z)
+        # Copiamos la idea general del cristal (z) 24 veces, una para cada átomo futuro.
+        # latent_expanded shape: (Batch, 24, latent_dim)
+        latent_expanded = jnp.repeat(jnp.expand_dims(latent_vector, 1), self.max_atoms, axis=1)
+        
+        # 3. Distribución del Anclaje Local (P_i)
+        # Replicamos el sistema de coordenadas locales para todo el batch.
+        # pos_emb_expanded shape: (Batch, 24, 32)
+        pos_emb_expanded = jnp.repeat(jnp.expand_dims(pos_emb, 0), batch_size, axis=0)
+        
+        # 4. Fusión de Información (Global + Local)
+        # Cada "ranura" ahora sabe cuál es el concepto del cristal Y qué ranura específica es ella.
+        # x_local shape: (Batch, 24, latent_dim + 32)
+        x_local = jnp.concatenate([latent_expanded, pos_emb_expanded], axis=-1)
+        
+        # 5. Red de Mapeo Compartido (La Función Continua D_compartido)
+        # Esta red evalúa cada átomo de forma independiente pero estructurada.
+        x_local = nn.relu(nn.Dense(256)(x_local))
+        x_local = nn.relu(nn.Dense(256)(x_local))
+        
+        # SALIDA B: Coordenadas Fraccionales [0, 1]
+        # pred_pos shape: (Batch, 24, 3)
+        pred_pos = nn.sigmoid(nn.Dense(3)(x_local)) 
+        
+        # SALIDA C: Identidad Atómica (Logits)
+        vocab_size = int(self.max_atomic_number) + 1 
+        # pred_z_logits shape: (Batch, 24, 119)
+        pred_z_logits = nn.Dense(vocab_size)(x_local)
+        
+        return pred_lattice, pred_pos, pred_z_logits
 
 # ==============================================================================
 # 3. AUTOENCODER ORQUESTADOR

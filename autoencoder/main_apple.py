@@ -28,7 +28,6 @@ from autoencoder.data.loader import load_dataset, get_batches, create_batched_da
 from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
 
-# LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v2/"
 BASE_DIR = os.getcwd()
 LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v3")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
@@ -101,7 +100,7 @@ def main():
     total_batches = len(dset.ids) // BATCH_SIZE
     
     key = jax.random.PRNGKey(SEED)
-    model = Autoencoder(latent_dim=64, max_atoms=MAX_ATOMS)
+    model = Autoencoder(latent_dim=LATENT_DIM, max_atoms=MAX_ATOMS, max_atomic_number=MAX_ATOMIC_NUMBER)
     
     print("\n🧠 Compilando modelo y asignando pesos iniciales...")
     dummy_batch = list(get_batches(dset, BATCH_SIZE, shuffle=False))[0]
