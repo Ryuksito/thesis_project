@@ -42,7 +42,7 @@ from autoencoder.models.autoencoder import load_decoder
 # --- RUTAS ---
 # LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/latent_neat/runs/v1/"
 BASE_DIR = os.getcwd()
-LOGS_DIR = os.path.join(BASE_DIR, "latent_neat", "runs", "v2")
+LOGS_DIR = os.path.join(BASE_DIR, "latent_neat", "runs", "v1")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
 CHKPT_DIR = os.path.join(LOGS_DIR, "checkpoints")
 # AUTOENCODER_LOGS_DIR = "/home/alanh/Dev/owns/thesis_project/autoencoder/runs/v1/"
@@ -180,8 +180,14 @@ print("✅ Motores JAX Compilados.")
 
 # ── 4. BUCLE EVOLUTIVO DE BALDWIN (V1 Style) ───────────────────────────────
 
-json_log_path = os.path.join(LOGS_DIR, "neat_history.json")
-history_logs = {}
+csv_log_path = os.path.join(LOGS_DIR, "neat_history.csv")
+with open(csv_log_path, 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow([
+        "generation", "learning_rate", "init_grad_loss", "final_grad_loss", 
+        "best_eval_loss", "best_lattice_loss", "best_z_loss", "best_pos_loss", 
+        "valid_pop", "vram_peak_gb", "time_sec"
+    ])
 
 pbar = tqdm(range(config.N_GENERATIONS), desc="🧬 Evolución NEAT + JAX")
 
@@ -262,28 +268,32 @@ for generation in pbar:
         'VRAM': f"{peak_gb:.1f}G"
     })
 
-    history_logs[str(generation)] = {
-        "learning_rate": gen_lr,
-        "init_grad_loss": loss_estudio_inicio,
-        "final_grad_loss": loss_estudio_final,
-        "best_eval_loss": bl_total,
-        "best_lattice_loss": bl_lat,
-        "best_z_loss": bl_z,
-        "best_pos_loss": bl_pos,
-        "valid_pop": valid_count,
-        "vram_peak_gb": peak_gb,
-        "time_sec": gen_time
-    }
+    # 💾 ESCRITURA RÁPIDA EN CSV (Añade una sola fila, gasta 0 RAM extra)
+    with open(csv_log_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            generation,
+            gen_lr,
+            loss_estudio_inicio,
+            loss_estudio_final,
+            bl_total,
+            bl_lat,
+            bl_z,
+            bl_pos,
+            valid_count,
+            peak_gb,
+            f"{gen_time:.2f}"
+        ])
 
-    # Guardar en disco
+    # Guardar en disco el Checkpoint físico (Cerebro ganador)
     if generation % 10 == 0 or generation == config.N_GENERATIONS - 1:
-        with open(json_log_path, 'w') as f:
-            json.dump(history_logs, f, indent=4)
-            
         best_nodes = jax.device_get(pop_nodes[best_idx])
         best_conns = jax.device_get(pop_conns[best_idx])
         
         chkpt_file = os.path.join(CHKPT_DIR, f"best_gen_{generation:04d}.npz")
         np.savez(chkpt_file, nodes=best_nodes, conns=best_conns, loss=bl_total)
+
+    del fitnesses, cpu_totals, cpu_lats, cpu_zs, cpu_pos 
+    gc.collect()
 
 print("\n✅ Entrenamiento Híbrido Finalizado. Checkpoints guardados en:", CHKPT_DIR)

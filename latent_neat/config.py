@@ -38,7 +38,7 @@ SEED = 42
 # --- Hiperparámetros de Descenso de Gradiente ---
 # 🟢 Subido de 8 a 128. JAX necesita batches grandes para amortizar la compilación.
 BATCH_SIZE = 32            
-N_GENERATIONS = 500
+N_GENERATIONS = 1500
 GRAD_STEPS_PER_GEN = 10
 TOTAL_GRAD_STEPS = N_GENERATIONS * GRAD_STEPS_PER_GEN # 5000 iteraciones totales
 
@@ -47,14 +47,14 @@ LR_MIN = 1e-5               # Tasa mínima (aterrizaje suave en el mínimo globa
 
 # --- Hiperparámetros Topológicos (TensorNEAT) ---
 # 🟢 Subido de 112 a 1000. Tendrás 1000 topologías neuronales distintas compitiendo.
-POPSIZE = 8     
-POP_BATCH_SIZE = 8       
+POPSIZE = 64     
+POP_BATCH_SIZE = 16       
 SPECIES_SIZE = 20
 SURVIVAL_THRESHOLD = 0.1
 
 # 🟢 Reducidos para ahorrar VRAM y obligar a NEAT a ser elegante y directo.
-MAX_NODES = 300
-MAX_CONNS = 4000
+MAX_NODES = 400
+MAX_CONNS = 5000
 CONN_ADD_PROB = 0.15
 CONN_DELETE_PROB = 0.3
 NODE_ADD_PROB = 0.05
