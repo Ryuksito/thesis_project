@@ -98,9 +98,18 @@ def main():
     
     dset = load_dataset(DATA_PATH + "/autoencoder_16k.h5")
     total_batches = len(dset.ids) // BATCH_SIZE
+    TOTAL_STEPS = total_batches * EPOCHS
     
     key = jax.random.PRNGKey(SEED)
     model = Autoencoder(latent_dim=LATENT_DIM, max_atoms=MAX_ATOMS, max_atomic_number=MAX_ATOMIC_NUMBER)
+    alpha_factor = LR_MIN / LR_MAX
+
+    # 2. Crear el Scheduler Cosinoidal
+    lr_schedule = optax.cosine_decay_schedule(
+        init_value=LR_MAX,
+        decay_steps=TOTAL_STEPS,
+        alpha=alpha_factor
+    )
     
     print("\n🧠 Compilando modelo y asignando pesos iniciales...")
     dummy_batch = list(get_batches(dset, BATCH_SIZE, shuffle=False))[0]
@@ -110,7 +119,7 @@ def main():
     )
     variables = model.init(key, dummy_graph)
     
-    optimizer = optax.adamw(learning_rate=1e-5)
+    optimizer = optax.adamw(learning_rate=lr_schedule)
     state = train_state.TrainState.create(apply_fn=model.apply, params=variables['params'], tx=optimizer)
     
     # =====================================================================
@@ -153,7 +162,7 @@ def main():
     else:
         with open(csv_log_path, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec"])
+            writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec", "learning_rate"])
 
     # 5. Entrenamiento
     print(f"\n🔥 ¡Arrancando GPU! Entrenando hasta la época {EPOCHS}...\n")
@@ -181,6 +190,7 @@ def main():
             target_z = jnp.array(batch['atoms'])
             
             state, loss, (l_lat, l_z, l_pos) = train_step(state, graph, target_lattice, target_pos, target_z)
+            current_lr = lr_schedule(state.step)
             
             # Guardamos la info del step (excepto VRAM y Tiempo, eso va al final)
             epoch_step_metrics.append([
@@ -189,7 +199,8 @@ def main():
                 float(loss.item()),
                 float(l_lat.item()),
                 float(l_pos.item()),
-                float(l_z.item())
+                float(l_z.item()),
+                float(current_lr)
             ])
             
             batch_losses.append(loss.item())
