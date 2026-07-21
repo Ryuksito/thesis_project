@@ -14,18 +14,28 @@ class DatasetBase:
 
 # =====================================================================
 # 1. CARGA DE DATOS A LA MEMORIA RAM
-# =====================================================================
-def load_dataset(h5_path) -> DatasetBase:
+def load_dataset(h5_path, split='train') -> DatasetBase:
     """
     Carga TODO el dataset HDF5 en la memoria RAM para evitar la inanición 
     de la GPU (GPU Starvation) durante el entrenamiento asíncrono con JAX.
-    """
+    
+    Args:
+        h5_path (str): Ruta al archivo .h5
+        split (str): Partición a cargar ('train' o 'test'). Por defecto es 'train'.
+    """    
+    print(f"📥 Cargando datos de la partición '{split}' en memoria...")
+    
     with h5py.File(h5_path, 'r') as hf:
-        target_lattice = hf['target_lattice'][:]
-        target_atoms = hf['target_atoms'][:]
-        target_positions = hf['target_positions'][:]
-        material_ids = hf['material_ids'][:]
+        # 1. Apuntamos específicamente al subgrupo ('train' o 'test')
+        grp = hf[split]
         
+        # 2. Extraemos los tensores desde ese subgrupo
+        target_lattice = grp['target_lattice'][:]
+        target_atoms = grp['target_atoms'][:]
+        target_positions = grp['target_positions'][:]
+        material_ids = grp['material_ids'][:]
+        
+    print(f"✅ ¡{len(material_ids)} cristales cargados desde '/{split}'!")
     
     return DatasetBase(
         lattice=target_lattice,

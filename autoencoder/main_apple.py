@@ -29,7 +29,7 @@ from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
 
 BASE_DIR = os.getcwd()
-LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v3")
+LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v4")
 print(f"Los logs se guardarán en: {LOGS_DIR}")
 
 # =====================================================================
@@ -162,7 +162,7 @@ def main():
     else:
         with open(csv_log_path, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "vram_mb", "epoch_time_sec", "learning_rate"])
+            writer.writerow(["epoch", "step", "loss", "lattice_loss", "position_loss", "z_loss", "learning_rate", "vram_mb", "epoch_time_sec"])
 
     # 5. Entrenamiento
     print(f"\n🔥 ¡Arrancando GPU! Entrenando hasta la época {EPOCHS}...\n")
