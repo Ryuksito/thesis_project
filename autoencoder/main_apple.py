@@ -27,6 +27,7 @@ from autoencoder.config import *
 from autoencoder.data.loader import load_dataset, get_batches, create_batched_dataset
 from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
+import config as gconfig
 
 BASE_DIR = os.getcwd()
 LOGS_DIR = os.path.join(BASE_DIR, "autoencoder", "runs", "v4")
@@ -96,12 +97,12 @@ def main():
         options=options
     )
     
-    dset = load_dataset(DATA_PATH + "/autoencoder_16k.h5")
+    dset = load_dataset(gconfig.DATA_PATH + "/autoencoder_16k.h5")
     total_batches = len(dset.ids) // BATCH_SIZE
     TOTAL_STEPS = total_batches * EPOCHS
     
-    key = jax.random.PRNGKey(SEED)
-    model = Autoencoder(latent_dim=LATENT_DIM, max_atoms=MAX_ATOMS, max_atomic_number=MAX_ATOMIC_NUMBER)
+    key = jax.random.PRNGKey(gconfig.SEED)
+    model = Autoencoder(latent_dim=gconfig.LATENT_DIM, max_atoms=gconfig.MAX_ATOMS, max_atomic_number=gconfig.MAX_ATOMIC_NUMBER)
     alpha_factor = LR_MIN / LR_MAX
 
     # 2. Crear el Scheduler Cosinoidal
@@ -115,7 +116,7 @@ def main():
     dummy_batch = list(get_batches(dset, BATCH_SIZE, shuffle=False))[0]
     dummy_graph = create_batched_dataset(
         dummy_batch['atoms'], dummy_batch['positions'], dummy_batch['lattice'],
-        BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+        BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
     )
     variables = model.init(key, dummy_graph)
     
@@ -180,7 +181,7 @@ def main():
             try:
                 graph = create_batched_dataset(
                     batch['atoms'], batch['positions'], batch['lattice'],
-                    BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+                    BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
                 )
             except ValueError:
                 continue

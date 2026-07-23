@@ -14,6 +14,7 @@ import numpy as np
 import optax
 
 from autoencoder.config import *
+import config as gconfig
 from autoencoder.data.loader import load_dataset, get_batches, create_batched_dataset
 from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_lattice_loss, compute_z_loss, compute_positions_loss
@@ -35,7 +36,7 @@ def debug_step():
 
     # 1. Cargar solo 1 batch de datos
     print("Cargando datos...")
-    dset = load_dataset(DATA_PATH + "/autoencoder_16k.h5")
+    dset = load_dataset(gconfig.DATA_PATH + "/autoencoder_16k.h5")
     print(f"dset.ids: {type(dset.ids), {dset.ids.dtype}}, {jnp.min(dset.ids)}, {jnp.max(dset.ids)}")
     print(f"dset.lattice: {type(dset.lattice), {dset.lattice.dtype}}, {jnp.min(dset.lattice)}, {jnp.max(dset.lattice)}")
     print(f"dset.positions: {type(dset.positions), {dset.positions.dtype}}, {jnp.min(dset.positions)}, {jnp.max(dset.positions)}")
@@ -50,7 +51,7 @@ def debug_step():
     
     graph = create_batched_dataset(
         batch['atoms'], batch['positions'], batch['lattice'],
-        BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+        BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
     )
 
     # 4. Inspección del Grafo
@@ -74,7 +75,7 @@ def debug_step():
 
     # 2. Inicializar Modelo
     key = jax.random.PRNGKey(42)
-    model = Autoencoder(latent_dim=64, max_atoms=MAX_ATOMS)
+    model = Autoencoder(latent_dim=64, max_atoms=gconfig.MAX_ATOMS)
     variables = model.init(key, graph)
     
     print("\n🧠 Ejecutando Forward Pass PASO A PASO...")

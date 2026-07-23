@@ -1,0 +1,24 @@
+import os
+# ==========================================
+# CONSTANTES DE DIMENSIONALIDAD
+# ==========================================
+MAX_ATOMS = 24           # ¡El nuevo límite dorado!
+LATTICE_PARAMS = 6       # a, b, c, alpha, beta, gamma
+
+# ==========================================
+# CONSTANTES DE NORMALIZACIÓN
+# ==========================================
+MAX_ATOMIC_NUMBER = 118
+MAX_LATTICE_LENGTH = 38.0
+MAX_LATTICE_ANGLE = 180.0
+
+# ==========================================
+# STRUC CONSTANTS
+# ==========================================
+# DATA_PATH = os.getenv("DATA_PATH")
+BASE_DIR = os.getcwd()
+DATA_PATH = os.path.join(BASE_DIR, "_dataset")
+
+SEED = 42
+LATENT_DIM = 64
+

@@ -24,6 +24,7 @@ from tqdm import tqdm
 
 # Tus módulos
 from autoencoder.config import *
+import config as gconfig
 from autoencoder.data.loader import load_dataset, get_batches, create_batched_dataset
 from autoencoder.models.autoencoder import Autoencoder
 from autoencoder.loss import compute_total_loss
@@ -97,17 +98,17 @@ def main():
         options=options
     )
     
-    dset = load_dataset(DATA_PATH + "/autoencoder_16k.h5")
+    dset = load_dataset(gconfig.DATA_PATH + "/autoencoder_16k.h5")
     total_batches = len(dset.ids) // BATCH_SIZE
     
-    key = jax.random.PRNGKey(SEED)
-    model = Autoencoder(latent_dim=64, max_atoms=MAX_ATOMS)
+    key = jax.random.PRNGKey(gconfig.SEED)
+    model = Autoencoder(latent_dim=64, max_atoms=gconfig.MAX_ATOMS)
     
     print("\n🧠 Compilando modelo y asignando pesos iniciales...")
     dummy_batch = list(get_batches(dset, BATCH_SIZE, shuffle=False))[0]
     dummy_graph = create_batched_dataset(
         dummy_batch['atoms'], dummy_batch['positions'], dummy_batch['lattice'],
-        BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+        BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
     )
     variables = model.init(key, dummy_graph)
     
@@ -160,7 +161,7 @@ def main():
             try:
                 graph = create_batched_dataset(
                     batch['atoms'], batch['positions'], batch['lattice'],
-                    BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+                    BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
                 )
             except ValueError:
                 continue

@@ -17,6 +17,7 @@ import numpy as np
 
 from autoencoder.models.autoencoder import Autoencoder, CrystalDecoder
 from autoencoder.config import *
+import config as gconfig
 from autoencoder.data.loader import load_dataset, get_batches, create_batched_dataset
 from autoencoder.loss import mse_loss
 
@@ -93,16 +94,16 @@ def load_and_test():
     print("="*60)
 
     # 1. Definir el modelo completo
-    model = Autoencoder(latent_dim=64, max_atoms=MAX_ATOMS)
+    model = Autoencoder(latent_dim=64, max_atoms=gconfig.MAX_ATOMS)
     
     # 2. Cargar datos
     print("Cargando datos...")
-    dset = load_dataset(DATA_PATH + "/autoencoder_16k.h5")
+    dset = load_dataset(gconfig.DATA_PATH + "/autoencoder_16k.h5")
     dummy_batch = list(get_batches(dset, BATCH_SIZE, shuffle=False))[0] 
     
     dummy_graph = create_batched_dataset(
         dummy_batch['atoms'], dummy_batch['positions'], dummy_batch['lattice'],
-        BATCH_SIZE, MAX_ATOMS, MAX_N_EDGES, MAX_ATOMIC_NUMBER, MAX_LATTICE_LENGTH, MAX_LATTICE_ANGLE, 5.0
+        BATCH_SIZE, gconfig.MAX_ATOMS, MAX_N_EDGES, gconfig.MAX_ATOMIC_NUMBER, gconfig.MAX_LATTICE_LENGTH, gconfig.MAX_LATTICE_ANGLE, 5.0
     )
     
     # 3. Manager de Checkpoints
@@ -124,7 +125,7 @@ def load_and_test():
 
     # 5. INFERENCIA PURA
     np.set_printoptions(precision=4, suppress=True)
-    decoder_model = CrystalDecoder(max_atoms=MAX_ATOMS)
+    decoder_model = CrystalDecoder(max_atoms=gconfig.MAX_ATOMS)
     
     pred_lattice_raw, pred_pos_raw, pred_z_raw = decoder_model.apply(
         {'params': decoder_only_params}, 
@@ -188,8 +189,8 @@ def load_and_test():
         real_z = target_z[idx]
         pred_z = pred_z_full[idx]
         num_atoms = int(np.sum(real_z > 0))
-        real_z_tabla = np.round(real_z * MAX_ATOMIC_NUMBER)
-        pred_z_tabla = np.round(pred_z * MAX_ATOMIC_NUMBER)
+        real_z_tabla = np.round(real_z * gconfig.MAX_ATOMIC_NUMBER)
+        pred_z_tabla = np.round(pred_z * gconfig.MAX_ATOMIC_NUMBER)
         
         print(f"🔬 INSPECCIÓN VISUAL (Cristal #{idx})")
         print(f"⚛️  IDENTIDADES ATÓMICAS (Z)")

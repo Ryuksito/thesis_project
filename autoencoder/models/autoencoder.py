@@ -7,6 +7,7 @@ import jraph
 import e3nn_jax as e3nn
 import orbax.checkpoint as ocp
 import autoencoder.config as config
+import config as gconfig
 
 # ==============================================================================
 # 4. FUNCIONES DE CARGA Y CIRUGÍA DE VRAM (CROSS-HARDWARE)
