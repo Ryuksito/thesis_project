@@ -87,7 +87,8 @@ def compute_total_loss(pred_lattice, pred_pos, pred_z_logits, target_lattice, ta
     
     total_loss = w_lat + w_z + w_pos
     
-    return total_loss, (l_lat.item(), l_z.item(), l_pos.item())
+    # 🔥 CORRECCIÓN: Devolvemos tensores crudos. Cero llamadas a .item() aquí.
+    return total_loss, (l_lat, l_z, l_pos)
 
 def mse_loss(pred_lattice, pred_pos, pred_z, target_lattice, target_pos, target_z):    
     mask_real = (target_z > 0).float()
@@ -112,7 +113,8 @@ def mse_loss(pred_lattice, pred_pos, pred_z, target_lattice, target_pos, target_
     
     total_loss = (1.0 * loss_lattice) + (1.0 * loss_z) + (10.0 * loss_pos)
     
-    return total_loss, (loss_lattice.item(), loss_z.item(), loss_pos.item())
+    # 🔥 CORRECCIÓN: Devolvemos tensores crudos. Cero llamadas a .item() aquí.
+    return total_loss, (loss_lattice, loss_z, loss_pos)
 
 # =====================================================================
 # PÉRDIDA SUPERVIVENCIA NEAT
@@ -159,7 +161,6 @@ def crystal_loss_fn(preds, y_target, lattice_params=6, max_atoms=24, separate_re
     z_loss = F.mse_loss(sorted_pred_z, sorted_target_z)
 
     # 4. VARIANCE & REPULSION
-    # En PyTorch var(unbiased=False) replica el jnp.var default.
     fp_var_pred = torch.var(fp_pred * mask, dim=0, unbiased=False)
     fp_var_target = torch.var(fp_target * mask, dim=0, unbiased=False)
     var_loss = F.mse_loss(fp_var_pred, fp_var_target)

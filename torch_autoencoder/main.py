@@ -32,7 +32,6 @@ def get_device():
     else:
         return torch.device("cpu")
     
-
 def get_peak_vram(device):
     """Obtiene el pico de uso de VRAM de la época actual usando la API nativa."""
     if device.type == 'cuda':
@@ -75,10 +74,15 @@ def main():
         cutoff=5.0
     )
     
-    # DataLoader de PyG empaqueta grafos de distintos tamaños automáticamente
+    # 🔥 CORRECCIÓN: Adaptación dinámica de workers y memoria según la arquitectura
+    is_cuda = (device.type == 'cuda')
+    num_workers = 4 if is_cuda else 0
+    
     dataloader = DataLoader(
         dataset, batch_size=BATCH_SIZE, shuffle=True, 
-        num_workers=4, pin_memory=(device.type == 'cuda'), persistent_workers=True
+        num_workers=num_workers, 
+        pin_memory=is_cuda, 
+        persistent_workers=(num_workers > 0)
     )
     
     TOTAL_STEPS = len(dataloader) * EPOCHS
@@ -134,38 +138,36 @@ def main():
             # Forward pass
             pred_lattice, pred_pos, pred_z_logits, _ = model(batch)
             
-            # 🧩 PUENTE DE DIMENSIONALIDAD: PyG vs PyTorch Denso
-            # El Encoder trabaja con grafos continuos desconectados, pero el Decoder
-            # y el loss asumen (Batch, Max_Atoms, Features). Convertimos al vuelo.
             target_z_dense, _ = to_dense_batch(batch.x, batch.batch, max_num_nodes=gconfig.MAX_ATOMS)
             target_pos_dense, _ = to_dense_batch(batch.pos, batch.batch, max_num_nodes=gconfig.MAX_ATOMS)
             target_lattice = batch.norm_lattice.view(-1, 6)
             
-            # Cálculo de pérdida
+            # Cálculo de pérdida (Los retornos ahora son TENSORES en la GPU)
             loss, (l_lat, l_z, l_pos) = compute_total_loss(
                 pred_lattice, pred_pos, pred_z_logits, 
-                target_lattice, # <--- Se usa el normalizado [0,1]
-                target_pos_dense, target_z_dense
+                target_lattice, target_pos_dense, target_z_dense
             )
             
             # Backward pass
             loss.backward()
             
-            # Gradient clipping (Buena práctica para grafos estables)
+            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
             optimizer.step()
             scheduler.step()
             
-            current_lr = scheduler.get_last_lr()[0]
-            
-            # Registro de métricas
+            # 🔥 CORRECCIÓN: Extracción de métricas espaciada (Evita el lag CPU-GPU)
             if step % 10 == 0:
-                loss_val = loss.item() # Este SÍ necesita .item() porque tiene el gradiente
+                current_lr = scheduler.get_last_lr()[0]
                 
-                # l_lat, l_pos y l_z ya son floats, los pasamos directo
+                loss_val = loss.item()
+                l_lat_val = l_lat.item()
+                l_pos_val = l_pos.item()
+                l_z_val = l_z.item()
+                
                 epoch_step_metrics.append([
-                    epoch + 1, step + 1, loss_val, l_lat, l_pos, l_z, current_lr
+                    epoch + 1, step + 1, loss_val, l_lat_val, l_pos_val, l_z_val, current_lr
                 ])
                 
                 batch_losses.append(loss_val)
@@ -173,7 +175,7 @@ def main():
                 
         # --- FIN DE LA ÉPOCA ---
         epoch_time = time.time() - start_time
-        avg_loss = sum(batch_losses) / len(batch_losses)
+        avg_loss = sum(batch_losses) / len(batch_losses) if batch_losses else float('inf')
         current_vram = get_peak_vram(device)
         
         # Escritura en CSV
