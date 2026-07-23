@@ -161,12 +161,11 @@ def main():
             
             # Registro de métricas
             if step % 10 == 0:
-                loss_val = loss.item()
-                l_lat_val = l_lat.item()
-                l_pos_val = l_pos.item()
-                l_z_val = l_z.item()
+                loss_val = loss.item() # Este SÍ necesita .item() porque tiene el gradiente
+                
+                # l_lat, l_pos y l_z ya son floats, los pasamos directo
                 epoch_step_metrics.append([
-                    epoch + 1, step + 1, loss_val, l_lat_val, l_pos_val, l_z_val, current_lr
+                    epoch + 1, step + 1, loss_val, l_lat, l_pos, l_z, current_lr
                 ])
                 
                 batch_losses.append(loss_val)
