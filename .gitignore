@@ -4,6 +4,9 @@ autoencoder/runs
 autoencoder/scripts
 latent_neat/runs
 latent_neat/scripts
+torch_autoencoder/runs
+torch_autoencoder/scripts
+
 borrar.py
 .vscode
 

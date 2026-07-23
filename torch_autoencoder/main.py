@@ -74,8 +74,10 @@ def main():
     )
     
     # DataLoader de PyG empaqueta grafos de distintos tamaños automáticamente
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, 
-                            num_workers=4, pin_memory=(device.type == 'cuda'))
+    dataloader = DataLoader(
+        dataset, batch_size=BATCH_SIZE, shuffle=True, 
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
     
     TOTAL_STEPS = len(dataloader) * EPOCHS
 
