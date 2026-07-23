@@ -15,17 +15,11 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-print(f"Current working directory: {os.getcwd()}")
-print(f"Python import paths: {sys.path[-1]}")
-
 from torch_autoencoder.config import *
 import config as gconfig
 from torch_autoencoder.data.loader import CrystalDataset
 from torch_autoencoder.models.autoencoder import Autoencoder
 from torch_autoencoder.loss import compute_total_loss
-
-LOGS_DIR = os.path.join(BASE_DIR, "torch_autoencoder", "runs", "v1")
-print(f"Los logs se guardarán en: {LOGS_DIR}")
 
 # =====================================================================
 # GESTIÓN DE DISPOSITIVOS Y VRAM NATIVA
@@ -51,6 +45,12 @@ def get_peak_vram(device):
 # BUCLE PRINCIPAL
 # =====================================================================
 def main():
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Python import paths: {sys.path[-1]}")
+    
+    LOGS_DIR = os.path.join(BASE_DIR, "torch_autoencoder", "runs", "v1")
+    print(f"Los logs se guardarán en: {LOGS_DIR}")
+
     print("\n" + "="*60)
     print("🚀 INICIANDO ENTRENAMIENTO DEL AUTOENCODER CRISTALOGRÁFICO")
     print("="*60)
@@ -78,7 +78,7 @@ def main():
     # DataLoader de PyG empaqueta grafos de distintos tamaños automáticamente
     dataloader = DataLoader(
         dataset, batch_size=BATCH_SIZE, shuffle=True, 
-        num_workers=4, pin_memory=True, persistent_workers=True
+        num_workers=4, pin_memory=(device.type == 'cuda'), persistent_workers=True
     )
     
     TOTAL_STEPS = len(dataloader) * EPOCHS
@@ -160,13 +160,16 @@ def main():
             current_lr = scheduler.get_last_lr()[0]
             
             # Registro de métricas
-            epoch_step_metrics.append([
-                epoch + 1, step + 1, loss.item(), l_lat, l_pos, l_z, current_lr
-            ])
-            
-            batch_losses.append(loss.item())
-            
             if step % 10 == 0:
+                loss_val = loss.item()
+                l_lat_val = l_lat.item()
+                l_pos_val = l_pos.item()
+                l_z_val = l_z.item()
+                epoch_step_metrics.append([
+                    epoch + 1, step + 1, loss_val, l_lat_val, l_pos_val, l_z_val, current_lr
+                ])
+                
+                batch_losses.append(loss_val)
                 pbar.set_postfix({'Loss': f"{sum(batch_losses[-50:]) / min(len(batch_losses), 50):.4f}"})
                 
         # --- FIN DE LA ÉPOCA ---
