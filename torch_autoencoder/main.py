@@ -35,7 +35,9 @@ def get_device():
         return torch.device("cuda")
     elif torch.backends.mps.is_available():
         return torch.device("mps")
-    return torch.device("cpu")
+    else:
+        return torch.device("cpu")
+    
 
 def get_peak_vram(device):
     """Obtiene el pico de uso de VRAM de la época actual usando la API nativa."""
